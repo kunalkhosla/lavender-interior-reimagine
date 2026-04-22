@@ -108,21 +108,30 @@ function scaffoldPrompt(params: {
   }
 
   // Initial generation. Source image is the apartment floor plan; we add
-  // explicit per-room dimensions and door/window/view text so the model
-  // doesn't have to read the small numbers off the plan visually.
+  // explicit per-room dimensions, door/window text and a specific camera
+  // VIEWPOINT so the model produces a consistent, accurate framing instead
+  // of guessing where to stand.
   const lines: string[] = [
     "You are an interior-design renderer for a residential apartment in India.",
     "The image attached is the apartment's FLOOR PLAN (a 2D top-down architectural drawing).",
-    `Render a single photorealistic interior view of the "${roomLabel}" as it would look`,
-    "if furnished and styled in the way described below. Use the floor plan only for context",
-    "(overall layout and room adjacency) — do NOT reproduce the floor plan itself in the output.",
+    `Render a single photorealistic interior photograph of the "${roomLabel}" as it would look`,
+    "if furnished and styled in the way described below. Use the floor plan for context",
+    "(overall layout, adjacency to other rooms) — do NOT reproduce the floor plan itself in the output.",
     "",
     `ROOM: ${roomLabel}`,
   ];
 
   if (meta) {
     lines.push(`DIMENSIONS: ${meta.dimensions}`);
-    lines.push(`LAYOUT: ${meta.layout}`);
+    lines.push("");
+    lines.push("WALL-BY-WALL LAYOUT:");
+    lines.push(meta.layout);
+    lines.push("");
+    lines.push("CAMERA VIEWPOINT (this is the most important instruction — match it exactly):");
+    lines.push(meta.viewpoint);
+    lines.push(
+      "Camera height roughly 1.5 m (eye-level of a standing adult). Lens about 24 mm equivalent so the whole room is visible without heavy distortion.",
+    );
   }
 
   lines.push(
@@ -130,10 +139,13 @@ function scaffoldPrompt(params: {
     APARTMENT_CONTEXT,
     "",
     "RULES:",
-    "- The output MUST be a photorealistic interior photograph of a real-looking room, shot from",
-    "  a comfortable eye-level angle (roughly a person standing inside the room).",
-    "- Match the room's general proportions to the dimensions given above. Place doors, windows,",
-    "  and balcony openings consistent with the layout description above.",
+    "- The output MUST be a photorealistic interior photograph of a real-looking room, framed",
+    "  exactly as the CAMERA VIEWPOINT above describes.",
+    "- Room shape and proportions must match the DIMENSIONS line. The width-to-length ratio is",
+    "  important — don't render a square room as a long corridor or vice versa.",
+    "- Every wall feature listed in the WALL-BY-WALL LAYOUT (doors, windows, balcony openings,",
+    "  built-in elements) must appear on the correct wall and be clearly visible from the camera",
+    "  viewpoint. Do not relocate, omit, or invent doors and windows.",
     "- Include realistic furniture, lighting, materials, and styling appropriate to an Indian",
     "  apartment in this room type, in the design direction described below.",
     "- Realistic shadows and reflections. No text, no labels, no architectural overlays, no 2D",
@@ -144,12 +156,8 @@ function scaffoldPrompt(params: {
     "  rectangular casement / sliding glass windows, standard hinged or sliding doors, balcony",
     "  doors as full-height sliding glass. Do NOT invent arched openings, French doors, bay",
     "  windows, skylights, or stained glass unless the design direction explicitly asks for them.",
-    "- Every window, door, and balcony opening described in the layout must be present, in the",
-    "  wall described, and clearly visible in the render.",
-    "- Do not remove the windows or balcony openings to fit a furniture layout. The room is a",
-    "  real apartment with the openings listed; the design must work around them.",
-    "- Ceiling height is normal for an Indian apartment (about 9 ft / 2.7 m) — not vaulted, not",
-    "  double-height — unless the description says so.",
+    "- Do not remove or move windows / balcony openings to fit a furniture layout. The room is a",
+    "  real apartment with the exact openings described; the design must work around them.",
     "",
     `Design direction: ${user}`,
   );
