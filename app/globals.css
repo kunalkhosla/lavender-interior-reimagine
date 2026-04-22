@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+}
+
+html {
+  font-size: 18px;
+}
+
+@media (min-width: 640px) {
+  html {
+    font-size: 19px;
+  }
+}
+
+html, body {
+  background: #fdfaf3;
+  color: #1f1a13;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: #d6701a;
+  color: #fdfaf3;
+}
+
+/* drop shadow helper for image cards */
+.img-card-shadow {
+  box-shadow:
+    0 1px 0 rgba(60, 40, 10, 0.04),
+    0 12px 36px -16px rgba(60, 40, 10, 0.18);
+}
+
+/* native select arrow with our colors */
+.styled-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%231f1a13' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 14px;
+  padding-right: 2.75rem;
+}
+
+/* Larger tap targets on touch devices */
+@media (hover: none) {
+  button, a, [role="button"], select {
+    min-height: 44px;
+  }
+}

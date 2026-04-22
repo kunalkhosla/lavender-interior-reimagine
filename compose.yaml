@@ -1,0 +1,36 @@
+# Hostinger VPS deployment for lavender-interior-reimagine.
+#
+# Lives on the VPS at /docker/lavender-interior-reimagine/docker-compose.yml.
+# Sibling .env holds GEMINI_API_KEY (reused from /docker/784dakota-home-reimagine/.env).
+#
+#   docker compose pull
+#   docker compose up -d
+#
+# Traefik picks up the container via labels and issues a Let's Encrypt
+# cert for interiors.srv1539585.hstgr.cloud.
+
+services:
+  lavender-interiors:
+    image: ghcr.io/kunalkhosla/lavender-interior-reimagine:latest
+    container_name: lavender-interiors
+    restart: unless-stopped
+    expose:
+      - "3000"
+    env_file:
+      - .env
+    environment:
+      - SITE_URL=https://interiors.srv1539585.hstgr.cloud
+    volumes:
+      # Pre-loaded reference photos (floor plan + any room photos). Filenames
+      # show as thumbnails on the upload step.
+      - ./photos:/app/photos:ro
+      # Persisted saved/shared renders — each saved image lives here as
+      # <id>.(png|jpg) + optional <id>.json sidecar.
+      - ./shares:/app/data/shares:rw
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.lavender-interiors.entrypoints=websecure"
+      - "traefik.http.routers.lavender-interiors.rule=Host(`interiors.srv1539585.hstgr.cloud`)"
+      - "traefik.http.routers.lavender-interiors.tls=true"
+      - "traefik.http.routers.lavender-interiors.tls.certresolver=letsencrypt"
+      - "traefik.http.services.lavender-interiors.loadbalancer.server.port=3000"
