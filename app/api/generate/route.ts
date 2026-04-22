@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { reimagine, type SourceKind } from "@/lib/gemini";
+import { reimagine } from "@/lib/gemini";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
   try {
-    const { imageBase64, mimeType, prompt, variations, room, sourceKind } = await req.json();
+    const { imageBase64, mimeType, prompt, variations, room } = await req.json();
     if (!imageBase64 || !mimeType || !prompt) {
       return NextResponse.json(
         { error: "imageBase64, mimeType, and prompt are required" },
@@ -14,15 +14,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const kind: SourceKind = sourceKind === "room-photo" ? "room-photo" : "floor-plan";
-
     const images = await reimagine({
       source: { base64: imageBase64, mimeType },
       prompt,
       variations: Math.min(Math.max(variations ?? 3, 1), 4),
       mode: "initial",
       room: typeof room === "string" ? room : undefined,
-      sourceKind: kind,
     });
 
     return NextResponse.json({

@@ -1,4 +1,5 @@
 import { GoogleGenAI, Modality } from "@google/genai";
+import { findRoom, APARTMENT_CONTEXT } from "./rooms";
 
 const MODEL_ID = process.env.GEMINI_MODEL ?? "gemini-2.5-flash-image";
 
@@ -15,13 +16,14 @@ export type GeneratedImage = {
   mimeType: string;
 };
 
-export type SourceKind = "floor-plan" | "room-photo";
-
 /**
  * Ask Gemini 2.5 Flash Image ("Nano Banana") to render an interior design
- * idea. Source is either the apartment floor plan (model imagines the named
- * room) or a real photo of that room (model preserves room geometry and
- * swaps furnishings/finishes only).
+ * idea for one of the rooms in the Lavender 1 apartment, given the floor
+ * plan as the source image and per-room metadata (dimensions, door/window
+ * placement, view from window) as text in the prompt.
+ *
+ * Refine mode is single-image, low-temperature: a targeted edit on the
+ * previously rendered interior.
  */
 export async function reimagine(params: {
   source: SourceImage;
@@ -29,21 +31,13 @@ export async function reimagine(params: {
   variations?: number;
   mode?: "initial" | "refine";
   room?: string;
-  sourceKind?: SourceKind;
 }): Promise<GeneratedImage[]> {
-  const {
-    source,
-    prompt,
-    variations = 3,
-    mode = "initial",
-    room,
-    sourceKind = "floor-plan",
-  } = params;
+  const { source, prompt, variations = 3, mode = "initial", room } = params;
   const ai = client();
 
   const contents = [
     { inlineData: { data: source.base64, mimeType: source.mimeType } },
-    { text: scaffoldPrompt({ user: prompt, mode, room, sourceKind }) },
+    { text: scaffoldPrompt({ user: prompt, mode, room }) },
   ];
 
   const config = {
@@ -87,59 +81,78 @@ function scaffoldPrompt(params: {
   user: string;
   mode: "initial" | "refine";
   room?: string;
-  sourceKind: SourceKind;
 }): string {
-  const { user, mode, room, sourceKind } = params;
-  const roomLabel = room?.trim() || "the chosen room";
+  const { user, mode, room } = params;
+  const meta = findRoom(room);
+  const roomLabel = meta?.label || room?.trim() || "the chosen room";
 
   if (mode === "refine") {
     return [
       "You are an interior-design renderer.",
       `Apply the following targeted change to the ${roomLabel} interior in this image.`,
-      "Keep the same camera angle, framing, room geometry, walls, windows,",
-      "and doors. Only change what the edit asks for. Produce a photorealistic result.",
+      "",
+      "HARD CONSTRAINT — DO NOT CHANGE THE STRUCTURE OF THE ROOM:",
+      "Preserve the camera angle, framing, walls, ceiling, floor outline, doors,",
+      "windows, balcony openings, columns, and the overall room geometry exactly",
+      "as they appear in the input image. The number, position, size, and shape",
+      "of every window and every door must stay identical. Do NOT remove a window,",
+      "add a window, change a window's shape, or merge windows together. Same for",
+      "doors and balcony openings.",
+      "",
+      "Only change movable / surface elements: furniture, rugs, curtains, lighting",
+      "fixtures, wall finishes, paint, wallpaper, flooring finish, art, and decor.",
+      "Apply only the specific edit described below.",
       "",
       `Edit: ${user}`,
     ].join("\n");
   }
 
-  if (sourceKind === "floor-plan") {
-    return [
-      "You are an interior-design renderer for a residential apartment in India.",
-      "The image attached is the apartment's FLOOR PLAN (a 2D top-down architectural drawing).",
-      `Render a single photorealistic interior view of the "${roomLabel}" as it would look`,
-      "if furnished and styled in the way described below. Use the floor plan only for context",
-      "(approximate room shape, dimensions, doors, windows, and adjacency to other rooms) — do",
-      "NOT reproduce the floor plan itself in the output.",
-      "",
-      "RULES:",
-      "- The output MUST be a photorealistic interior photograph of a real-looking room, shot from",
-      "  a comfortable eye-level angle (roughly a person standing inside the room).",
-      "- Match the room's general proportions and aspect to what's shown in the floor plan",
-      "  for that room. Place doors and windows roughly where the plan shows them.",
-      "- Include realistic furniture, lighting, materials, and styling appropriate to an Indian",
-      "  apartment in this room type, in the design direction described below.",
-      "- Natural daylight unless the description says otherwise. Realistic shadows and reflections.",
-      "- No text, no labels, no architectural overlays, no 2D plan elements.",
-      "",
-      `Design direction: ${user}`,
-    ].join("\n");
+  // Initial generation. Source image is the apartment floor plan; we add
+  // explicit per-room dimensions and door/window/view text so the model
+  // doesn't have to read the small numbers off the plan visually.
+  const lines: string[] = [
+    "You are an interior-design renderer for a residential apartment in India.",
+    "The image attached is the apartment's FLOOR PLAN (a 2D top-down architectural drawing).",
+    `Render a single photorealistic interior view of the "${roomLabel}" as it would look`,
+    "if furnished and styled in the way described below. Use the floor plan only for context",
+    "(overall layout and room adjacency) — do NOT reproduce the floor plan itself in the output.",
+    "",
+    `ROOM: ${roomLabel}`,
+  ];
+
+  if (meta) {
+    lines.push(`DIMENSIONS: ${meta.dimensions}`);
+    lines.push(`LAYOUT: ${meta.layout}`);
   }
 
-  // sourceKind === "room-photo"
-  return [
-    "You are an interior-design renderer.",
-    `The image attached is a real photograph of the "${roomLabel}" in our apartment.`,
-    "Re-render this room as it would look if redesigned in the way described below.",
+  lines.push(
     "",
-    "HARD CONSTRAINT — KEEP THE BONES OF THE ROOM:",
-    "Preserve the camera angle, framing, walls, ceiling, floor outline, doors,",
-    "windows, columns, and overall room geometry exactly as they are in the photo.",
-    "Only change movable elements: furniture, rugs, curtains, lighting fixtures,",
-    "wall finishes/paint/wallpaper, flooring finish, art, and decor.",
-    "Produce a photorealistic result that matches the same lighting time-of-day",
-    "as the source unless the description says otherwise.",
+    APARTMENT_CONTEXT,
+    "",
+    "RULES:",
+    "- The output MUST be a photorealistic interior photograph of a real-looking room, shot from",
+    "  a comfortable eye-level angle (roughly a person standing inside the room).",
+    "- Match the room's general proportions to the dimensions given above. Place doors, windows,",
+    "  and balcony openings consistent with the layout description above.",
+    "- Include realistic furniture, lighting, materials, and styling appropriate to an Indian",
+    "  apartment in this room type, in the design direction described below.",
+    "- Realistic shadows and reflections. No text, no labels, no architectural overlays, no 2D",
+    "  plan elements in the rendered output.",
+    "",
+    "STRUCTURAL CONSTRAINTS (do not violate these):",
+    "- Render windows and doors that are typical for a modern Indian residential apartment:",
+    "  rectangular casement / sliding glass windows, standard hinged or sliding doors, balcony",
+    "  doors as full-height sliding glass. Do NOT invent arched openings, French doors, bay",
+    "  windows, skylights, or stained glass unless the design direction explicitly asks for them.",
+    "- Every window, door, and balcony opening described in the layout must be present, in the",
+    "  wall described, and clearly visible in the render.",
+    "- Do not remove the windows or balcony openings to fit a furniture layout. The room is a",
+    "  real apartment with the openings listed; the design must work around them.",
+    "- Ceiling height is normal for an Indian apartment (about 9 ft / 2.7 m) — not vaulted, not",
+    "  double-height — unless the description says so.",
     "",
     `Design direction: ${user}`,
-  ].join("\n");
+  );
+
+  return lines.join("\n");
 }

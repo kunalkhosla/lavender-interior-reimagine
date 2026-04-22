@@ -11,15 +11,23 @@ type Props = {
   // When true, skip the absolute-overlay positioning so the caller can drop
   // the button into a flex row (e.g. next to a sibling action button).
   inline?: boolean;
+  // When provided, render this content inside the button instead of the
+  // default magnify icon. Used to make image thumbnails into zoomable
+  // buttons (the image is the click target).
+  children?: React.ReactNode;
+  ariaLabel?: string;
 };
 
-export function ZoomButton({ src, alt, className, size = "md", inline = false }: Props) {
+export function ZoomButton({ src, alt, className, size = "md", inline = false, children, ariaLabel }: Props) {
   const [open, setOpen] = useState(false);
 
-  const dims =
-    size === "sm"
-      ? "w-7 h-7"
-      : "w-9 h-9";
+  const dims = children
+    ? "" // caller controls dimensions via className when supplying custom content
+    : size === "sm" ? "w-7 h-7" : "w-9 h-9";
+
+  const baseStyle = children
+    ? "" // no chrome — caller styles the button entirely via className
+    : "flex items-center justify-center rounded-full shrink-0 bg-paper/85 backdrop-blur text-ink border border-rule/60 shadow hover:bg-paper hover:text-accent transition";
 
   const positioning = inline
     ? (className ?? "")
@@ -35,17 +43,11 @@ export function ZoomButton({ src, alt, className, size = "md", inline = false }:
           setOpen(true);
         }}
         onPointerDown={(e) => e.stopPropagation()}
-        aria-label="View full screen"
-        title="View full screen"
-        className={[
-          "flex items-center justify-center rounded-full shrink-0",
-          "bg-paper/85 backdrop-blur text-ink border border-rule/60 shadow",
-          "hover:bg-paper hover:text-accent transition",
-          dims,
-          positioning,
-        ].join(" ")}
+        aria-label={ariaLabel ?? "View full screen"}
+        title={ariaLabel ?? "View full screen"}
+        className={[baseStyle, dims, positioning].filter(Boolean).join(" ")}
       >
-        <MagnifyIcon size={size === "sm" ? 14 : 16} />
+        {children ?? <MagnifyIcon size={size === "sm" ? 14 : 16} />}
       </button>
       {open && <Lightbox src={src} alt={alt} onClose={() => setOpen(false)} />}
     </>

@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { clearSession, loadSession, saveSession } from "@/lib/sessionStore";
+import { ROOMS } from "@/lib/rooms";
 import { ZoomButton } from "./components/ZoomButton";
 
 type Image = { dataUrl: string; label?: string };
@@ -15,39 +16,28 @@ type SavedPiece = {
   createdAt: number;
 };
 
-// The rooms in the apartment, in the order they should appear in the dropdown.
-// Pulled from the floor plan (Lavender 1 — 3BHK + 3T).
-const ROOMS: { value: string; label: string }[] = [
-  { value: "Living Room",        label: "Living Room" },
-  { value: "Dining Area",        label: "Dining Area" },
-  { value: "Kitchen",            label: "Kitchen" },
-  { value: "Master Bedroom",     label: "Master Bedroom" },
-  { value: "Second Bedroom",     label: "Second Bedroom" },
-  { value: "Third Bedroom",      label: "Third Bedroom" },
-  { value: "Master Bathroom",    label: "Master Bathroom" },
-  { value: "Common Bathroom",    label: "Common Bathroom" },
-  { value: "Front Balcony",      label: "Front Balcony" },
-  { value: "Master Balcony",     label: "Master Balcony" },
-];
-
-// A handful of design directions to try. Kept short, concrete, and readable —
-// no jargon. These show as tappable suggestion chips.
+// Suggestion chips. Tilted heavily toward Indian sensibilities — traditional
+// regional styles and modern Indian fusions, plus a few global looks that
+// work well in an Indian apartment context.
 const SAMPLE_PROMPTS: string[] = [
-  "Warm minimal — light walls, oak wood furniture, cream linen, lots of plants and natural light.",
-  "Classic Indian modern — warm woods, brass details, jewel-tone cushions, a handwoven dhurrie on the floor.",
-  "Coastal Goan — whitewashed walls, terracotta tile floors, cane chairs, light cotton curtains, ceiling fan.",
-  "Scandinavian calm — pale wood floors, white walls, soft greys, a simple pendant light, very uncluttered.",
-  "Boho cosy — layered rugs, low seating, lots of indoor plants, macramé wall hanging, warm orange tones.",
-  "Japandi — low oak furniture, soft beige walls, paper-shade lamp, minimal decor, very calm.",
-  "Earthy Mediterranean — limewashed walls in soft terracotta, arched mirror, olive plants, brass sconces.",
-  "Modern Indian luxury — marble floor, deep teal velvet sofa, gold-trimmed mirrors, a chandelier.",
-  "Cottage garden — floral wallpaper, painted wood furniture, vintage rug, fresh flowers in vases.",
-  "Mid-century modern — walnut sideboard, mustard armchair, geometric rug, atomic-style pendant light.",
-  "Rustic farmhouse — exposed wood beams, whitewashed brick, large wooden dining table, wrought iron details.",
-  "Tropical resort — wicker furniture, palm-leaf cushions, dark teak wood, soft white linen drapes.",
-  "Soft pastel — pale pink and mint walls, light wood, brass accents, sheer curtains, very feminine.",
-  "Industrial loft — exposed brick wall, leather sofa, edison bulbs, dark metal frames, concrete floor.",
-  "Quiet library — wall-to-wall bookshelves in dark wood, leather armchair, brass reading lamp, oriental rug.",
+  "Modern Indian classic — warm teak and sheesham wood, cream walls, jewel-tone silk cushions, brass details, a handwoven dhurrie on the floor, indoor plants.",
+  "Rajasthani haveli — carved teak doors, mirror-inlay accents, vibrant cushions in red and ochre, antique brass lamps, a wooden jhoola (swing), jaali screen by the window.",
+  "Goan-Portuguese — whitewashed walls, terracotta tile floor, dark Burmese teak furniture, pastel-painted shutters, cane planter chairs, soft cotton curtains, ceiling fan.",
+  "Kerala traditional — polished red oxide floor, dark rosewood furniture, brass bell lamps (vilakku), white walls, brass urli with floating flowers, areca palms.",
+  "Chettinad-inspired — Athangudi tile floor in geometric patterns, dark wood pillars, antique brass, vibrant kalamkari fabric, large copper urli, hanging brass lamp.",
+  "Pondicherry French-Tamil — soft pastel painted walls (mustard or pale blue), white cane furniture, hanging brass lamp, bougainvillea visible through the window, terracotta floor.",
+  "Modern Indian luxury — Italian marble floor, deep teal velvet sofa, brass and crystal chandelier, gold-trimmed mirrors, plush silk rugs, fresh tuberose in a brass vase.",
+  "Soft Indian minimal — off-white walls, light mango wood furniture, a single Madhubani painting, simple cotton dhurrie, brass diya, lots of natural light and plants.",
+  "Mumbai art deco — stepped ceiling moldings, terrazzo floor, curved velvet seating in deep green, brass lighting, a bold geometric rug, period-style mirror.",
+  "Jaipur summer — pale pink walls, indigo block-printed cushions, white cane bed or seating, sheer white cotton curtains, ceiling fan, a brass jharokha mirror.",
+  "Punjabi warmth — mustard yellow walls, dark sheesham wood, embroidered phulkari cushions and throws, brass utensils on display, copper accents, large family-style dining.",
+  "Bengali tea-time home — terracotta accents, kantha quilts, dark wood bookshelves, a comfortable cane chair by the window, fresh marigolds, lots of books and a brass teapot.",
+  "Pooja-corner serene — soft cream walls, white marble floor, brass diyas and bells, sandalwood accents, fresh jasmine and marigold garlands, a small wooden mandir, very calm and restful.",
+  "South Indian coastal — coconut wood furniture, rattan chairs, white walls, terracotta accent pots, hanging shell or coir lamps, banana leaf plants, sheer linen drapes.",
+  "Hill-station cottage (Shimla / Mussoorie vibe) — pinewood paneled walls, plaid wool throws, a small wood stove or fireplace, brass kettle, big windows looking out, warm reading lamps.",
+  "Boho Indian fusion — low floor seating with floor cushions and bolsters, layered block-printed rugs, lots of indoor plants, macramé wall hanging, brass and copper trinkets, fairy lights.",
+  "Scandi-Indian — pale wood floors, white walls, simple low-profile furniture, but warmed with one block-printed cushion, a brass diya, and a single Indian artwork. Very calm and uncluttered.",
+  "Japandi with Indian touches — low oak or mango wood furniture, soft beige walls, paper-shade lamp, a single brass bowl with floating flowers, minimal decor, calm and meditative.",
 ];
 
 function pickRandom<T>(arr: T[], n: number): T[] {
@@ -64,13 +54,11 @@ export default function HomePage() {
 
   // Step 1 inputs
   const [room, setRoom] = useState<string>("");
-  const [source, setSource] = useState<Image | null>(null); // either floor plan or a real room photo
+  // The floor plan is the source image we send to Gemini. The user never
+  // changes it — it loads automatically on first mount.
+  const [source, setSource] = useState<Image | null>(null);
   const [sourceMime, setSourceMime] = useState<string>("image/jpeg");
-  // Whether `source` is the floor plan (default) or a user-supplied photo of the room.
-  const [sourceKind, setSourceKind] = useState<"floor-plan" | "room-photo">("floor-plan");
   const [prompt, setPrompt] = useState("");
-  const [dragOver, setDragOver] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   // Results
   const [variations, setVariations] = useState<Image[]>([]);
@@ -84,10 +72,9 @@ export default function HomePage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Library: pre-loaded reference photos served from the VPS (e.g. floor plan,
-  // any real room photos the user has dropped in).
+  // Pre-loaded reference photos served from the VPS — for now, just the
+  // floor plan. Auto-picked on first load.
   const [library, setLibrary] = useState<LibraryPhoto[]>([]);
-  // User's own saved renders — persisted server-side via /api/shares.
   const [savedLibrary, setSavedLibrary] = useState<SavedPiece[]>([]);
   const [savedLoading, setSavedLoading] = useState(false);
 
@@ -114,7 +101,7 @@ export default function HomePage() {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
-  // Fetch reference photos. Pick the floor plan by default.
+  // Fetch reference photos and auto-pick the floor plan as the source.
   useEffect(() => {
     let cancelled = false;
     fetch("/api/photos")
@@ -125,10 +112,8 @@ export default function HomePage() {
         const fp = d.photos.find((p: LibraryPhoto) =>
           /floor[-_ ]?plan/i.test(p.name) || /floor[-_ ]?plan/i.test(p.label),
         );
-        // Auto-pick floor plan as the source on first load — only if nothing is
-        // already loaded from a restored session.
         if (fp && !source) {
-          await pickReferencePhoto(fp, "floor-plan");
+          await loadFloorPlanAsSource(fp);
         }
       })
       .catch(() => {});
@@ -279,7 +264,7 @@ export default function HomePage() {
     }
   }
 
-  async function pickReferencePhoto(photo: LibraryPhoto, kind: "floor-plan" | "room-photo") {
+  async function loadFloorPlanAsSource(photo: LibraryPhoto) {
     setError(null);
     try {
       const resp = await fetch(photo.url);
@@ -293,39 +278,10 @@ export default function HomePage() {
       });
       setSource({ dataUrl, label: photo.label });
       setSourceMime(type);
-      setSourceKind(kind);
     } catch (e: any) {
-      setError(`Couldn't load ${photo.label}: ${e?.message ?? "unknown"}`);
+      setError(`Couldn't load floor plan: ${e?.message ?? "unknown"}`);
     }
   }
-
-  const handleFile = useCallback((file: File) => {
-    setError(null);
-    if (!file.type.startsWith("image/")) {
-      setError("That doesn't look like a picture file.");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const url = reader.result as string;
-      setSource({ dataUrl: url, label: room ? `${room} (your photo)` : "Your photo" });
-      setSourceMime(file.type || "image/jpeg");
-      setSourceKind("room-photo");
-    };
-    reader.readAsDataURL(file);
-  }, [room]);
-
-  const onDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const f = e.dataTransfer.files?.[0];
-    if (f) handleFile(f);
-  };
-
-  const useFloorPlan = useCallback(() => {
-    const fp = library.find((p) => /floor[-_ ]?plan/i.test(p.name) || /floor[-_ ]?plan/i.test(p.label));
-    if (fp) pickReferencePhoto(fp, "floor-plan");
-  }, [library]);
 
   const base64From = (dataUrl: string) => dataUrl.split(",")[1] ?? "";
 
@@ -343,7 +299,6 @@ export default function HomePage() {
           prompt: prompt.trim(),
           variations: 3,
           room,
-          sourceKind,
         }),
       });
       const data = await resp.json();
@@ -402,29 +357,26 @@ export default function HomePage() {
     setRefineHistory([]);
     setCurrent(null);
     setError(null);
-    // Keep the floor plan loaded as the source — going back to "pick" with a
-    // blank slate would feel jarring; the floor plan reference makes it
-    // immediately obvious what comes next.
-    useFloorPlan();
     clearSession();
   }
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="max-w-[1100px] mx-auto w-full px-5 sm:px-8 pt-5 sm:pt-8 pb-5 flex items-center justify-between gap-3 border-b border-rule">
-        <a href="/" className="font-display text-[22px] sm:text-[28px] text-ink hover:text-accent transition-colors leading-none">
+      <header className="max-w-[1100px] mx-auto w-full px-5 sm:px-8 pt-5 sm:pt-7 pb-4 sm:pb-5 flex items-center justify-between gap-3 border-b border-rule">
+        <a href="/" className="font-display text-[20px] sm:text-[26px] text-ink hover:text-accent transition-colors leading-none truncate">
           Lavender <span className="italic text-accent">Interiors</span>
         </a>
-        <nav className="flex items-center gap-4 text-[14px] sm:text-[15px] text-inkSoft">
+        <div className="flex items-center gap-3 sm:gap-4 shrink-0">
           {step !== "pick" && (
             <button
               onClick={reset}
-              className="font-medium text-inkSoft hover:text-accent transition-colors"
+              className="text-[14px] sm:text-[15px] font-medium text-inkSoft hover:text-accent transition-colors"
             >
               ← Start over
             </button>
           )}
-        </nav>
+          <FloorPlanThumbHeader source={source} />
+        </div>
       </header>
 
       <main className="max-w-[1100px] mx-auto w-full px-5 sm:px-8 py-6 sm:py-10 flex-1">
@@ -439,19 +391,11 @@ export default function HomePage() {
           <PickStep
             room={room}
             setRoom={setRoom}
-            source={source}
-            sourceKind={sourceKind}
             prompt={prompt}
             setPrompt={setPrompt}
-            onPick={() => fileRef.current?.click()}
-            onDrop={onDrop}
-            dragOver={dragOver}
-            setDragOver={setDragOver}
-            onFile={handleFile}
             onGenerate={generate}
             busy={busy}
-            fileRef={fileRef}
-            useFloorPlan={useFloorPlan}
+            sourceReady={!!source}
             saved={savedLibrary}
             savedLoading={savedLoading}
             onLoadSaved={loadFromLibrary}
@@ -462,7 +406,6 @@ export default function HomePage() {
         {step === "variations" && source && (
           <VariationsStep
             source={source}
-            sourceKind={sourceKind}
             room={room}
             prompt={prompt}
             images={variations}
@@ -494,37 +437,56 @@ export default function HomePage() {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Header floor-plan thumbnail — small, always visible, click to view large
+// ────────────────────────────────────────────────────────────────────────────
+
+function FloorPlanThumbHeader({ source }: { source: Image | null }) {
+  if (!source) {
+    return (
+      <div
+        className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg bg-paperLift border border-rule animate-pulse"
+        aria-label="Loading floor plan"
+      />
+    );
+  }
+  return (
+    <ZoomButton
+      inline
+      src={source.dataUrl}
+      alt="Apartment floor plan"
+      ariaLabel="View the apartment floor plan"
+      className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg overflow-hidden border-2 border-rule hover:border-accent2 transition shrink-0"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={source.dataUrl}
+        alt=""
+        aria-hidden="true"
+        className="w-full h-full object-cover"
+      />
+    </ZoomButton>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Step 1 — pick a room and describe the look
 // ────────────────────────────────────────────────────────────────────────────
 
 function PickStep(props: {
   room: string;
   setRoom: (r: string) => void;
-  source: Image | null;
-  sourceKind: "floor-plan" | "room-photo";
   prompt: string;
   setPrompt: (p: string) => void;
-  onPick: () => void;
-  onDrop: (e: React.DragEvent) => void;
-  dragOver: boolean;
-  setDragOver: (v: boolean) => void;
-  onFile: (f: File) => void;
   onGenerate: () => void;
   busy: boolean;
-  fileRef: React.RefObject<HTMLInputElement>;
-  useFloorPlan: () => void;
+  sourceReady: boolean;
   saved: SavedPiece[];
   savedLoading: boolean;
   onLoadSaved: (s: SavedPiece) => void;
   onDeleteSaved: (s: SavedPiece) => void;
 }) {
-  const {
-    room, setRoom, source, sourceKind, prompt, setPrompt,
-    onPick, onDrop, dragOver, setDragOver, onFile, onGenerate, busy, fileRef,
-    useFloorPlan, saved, savedLoading, onLoadSaved, onDeleteSaved,
-  } = props;
-
-  const ready = !!room && !!prompt.trim() && !!source;
+  const { room, setRoom, prompt, setPrompt, onGenerate, busy, sourceReady, saved, savedLoading, onLoadSaved, onDeleteSaved } = props;
+  const ready = !!room && !!prompt.trim() && sourceReady;
 
   return (
     <section className="animate-fade-up">
@@ -533,11 +495,13 @@ function PickStep(props: {
           See an idea for a room.
         </h1>
         <p className="text-inkSoft text-[17px] sm:text-[18px] leading-relaxed">
-          Pick a room from our apartment, describe the look you'd like, and you'll see three interior design ideas based on the floor plan. Tap the one you like best to keep working on it.
+          Pick a room from our apartment, describe the look you'd like, and you'll see three interior design ideas. Tap the one you like best to keep working on it.
+        </p>
+        <p className="text-inkMuted text-[14px] sm:text-[15px] mt-2">
+          (The floor plan is the small picture at the top — tap it any time to see it large.)
         </p>
       </div>
 
-      {/* Saved ideas (only shown if there are any) */}
       {(saved.length > 0 || savedLoading) && (
         <div className="mb-9">
           <h2 className="text-[15px] font-semibold text-inkSoft mb-3 uppercase tracking-wide">
@@ -605,89 +569,10 @@ function PickStep(props: {
         </select>
       </div>
 
-      {/* Step 2 — Reference image (floor plan by default) */}
-      <div className="mb-7">
-        <div className="flex items-baseline justify-between gap-3 mb-2">
-          <span className="text-[18px] font-semibold text-ink">2. Reference picture</span>
-          {sourceKind === "room-photo" && (
-            <button
-              type="button"
-              onClick={useFloorPlan}
-              className="text-[14px] sm:text-[15px] text-accent2 font-semibold hover:text-accent transition-colors"
-            >
-              ← Use the floor plan instead
-            </button>
-          )}
-        </div>
-        <p className="text-inkSoft text-[15px] mb-3 leading-relaxed">
-          {sourceKind === "floor-plan"
-            ? "We'll start from the apartment's floor plan. If you'd rather start from a real photo of the room (so the walls and windows match exactly), drop a picture in the box below."
-            : "We'll re-style this real photo of the room. Walls, windows, and doors stay where they are."}
-        </p>
-
-        <div className="grid sm:grid-cols-[1.1fr_1fr] gap-4 sm:gap-5 items-start">
-          <div className="relative rounded-xl overflow-hidden border-2 border-rule bg-paperLift img-card-shadow">
-            {source ? (
-              <>
-                <div className="aspect-[4/3] bg-paperLift">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={source.dataUrl}
-                    alt={source.label ?? "reference"}
-                    className="w-full h-full object-contain"
-                  />
-                </div>
-                <div className="px-3 py-2 bg-paperSoft border-t border-rule text-[14px] text-inkSoft font-medium">
-                  {sourceKind === "floor-plan" ? "Apartment floor plan" : (source.label ?? "Your photo")}
-                </div>
-                <ZoomButton src={source.dataUrl} alt={source.label ?? "reference"} size="sm" className="top-2 right-2" />
-              </>
-            ) : (
-              <div className="aspect-[4/3] flex items-center justify-center text-inkMuted text-[15px] p-6 text-center">
-                Loading the floor plan…
-              </div>
-            )}
-          </div>
-
-          <label
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={onDrop}
-            onClick={onPick}
-            className={[
-              "relative aspect-[4/3] rounded-xl cursor-pointer overflow-hidden",
-              "flex items-center justify-center text-center select-none",
-              "border-2 border-dashed transition",
-              dragOver ? "border-accent bg-accent/5" : "border-rule bg-paperLift hover:border-accent/60 hover:bg-paperSoft",
-            ].join(" ")}
-          >
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) onFile(f);
-              }}
-            />
-            <div className="p-6">
-              <div className="font-display text-[44px] text-accent leading-none mb-2">+</div>
-              <div className="text-ink text-[17px] font-semibold mb-1">
-                Have a real photo of this room?
-              </div>
-              <div className="text-inkSoft text-[14px]">
-                Tap to upload a picture from your phone
-              </div>
-            </div>
-          </label>
-        </div>
-      </div>
-
-      {/* Step 3 — Describe the look */}
+      {/* Step 2 — Describe the look */}
       <div className="mb-7">
         <label htmlFor="prompt" className="block text-[18px] font-semibold text-ink mb-2">
-          3. What look do you like?
+          2. What look do you like?
         </label>
         <p className="text-inkSoft text-[15px] mb-3 leading-relaxed">
           Describe the colours, materials, and feel — like talking to a designer. Or tap one of the suggestions below.
@@ -696,7 +581,7 @@ function PickStep(props: {
           id="prompt"
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder="e.g. warm minimal — light walls, oak wood, lots of plants and natural light."
+          placeholder="e.g. warm and minimal — light walls, oak wood, lots of plants and natural light."
           className="w-full bg-paperLift border-2 border-rule text-ink p-4 rounded-xl h-36 resize-none focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/30 placeholder:text-inkMuted text-[17px] leading-relaxed"
         />
 
@@ -724,7 +609,7 @@ function PickStep(props: {
         </button>
         {!ready && !busy && (
           <p className="text-inkMuted text-[14px] mt-2 text-center">
-            {!room ? "First, pick a room." : !prompt.trim() ? "Add a description (or pick a suggestion)." : "Almost ready…"}
+            {!sourceReady ? "Loading the floor plan…" : !room ? "First, pick a room." : !prompt.trim() ? "Add a description (or pick a suggestion)." : "Almost ready…"}
           </p>
         )}
       </div>
@@ -738,16 +623,15 @@ function PickStep(props: {
 
 function VariationsStep(props: {
   source: Image;
-  sourceKind: "floor-plan" | "room-photo";
   room: string;
   prompt: string;
   images: Image[];
   onSelect: (i: number) => void;
   onSaved: () => void;
 }) {
-  const { source, sourceKind, room, prompt, images, onSelect, onSaved } = props;
+  const { source, room, prompt, images, onSelect, onSaved } = props;
   const [viewIdx, setViewIdx] = useState(0);
-  const [compare, setCompare] = useState(false);
+  const [showPlan, setShowPlan] = useState(false);
   const current = images[viewIdx];
 
   return (
@@ -766,13 +650,13 @@ function VariationsStep(props: {
 
       {/* Hero preview */}
       <div className="relative mb-4 rounded-2xl overflow-hidden border-2 border-rule img-card-shadow bg-paperLift">
-        {compare ? (
+        {showPlan ? (
           <div className="grid grid-cols-1 sm:grid-cols-2">
             <div className="relative aspect-[4/3] sm:aspect-auto bg-paperLift">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={source.dataUrl} alt="reference" className="w-full h-full object-contain" />
+              <img src={source.dataUrl} alt="floor plan" className="w-full h-full object-contain" />
               <div className="absolute top-2 left-2 text-[12px] font-bold uppercase tracking-wide text-paper bg-ink/85 px-2.5 py-1 rounded">
-                {sourceKind === "floor-plan" ? "Floor plan" : "Original photo"}
+                Floor plan
               </div>
             </div>
             <div className="relative aspect-[4/3] sm:aspect-auto border-t sm:border-t-0 sm:border-l border-rule bg-paperLift">
@@ -815,10 +699,10 @@ function VariationsStep(props: {
 
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-paperSoft border-t border-rule">
           <button
-            onClick={() => setCompare((c) => !c)}
+            onClick={() => setShowPlan((c) => !c)}
             className="text-[14px] sm:text-[15px] font-semibold text-inkSoft hover:text-accent transition-colors"
           >
-            {compare ? "✕ Hide reference" : "⇄ Compare with reference"}
+            {showPlan ? "✕ Hide floor plan" : "⌖ Show floor plan"}
           </button>
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <SaveButton image={current} defaultLabel={`${room} — ${prompt}`} onSaved={onSaved} />
@@ -862,7 +746,7 @@ function VariationsStep(props: {
       </div>
 
       <p className="text-inkMuted text-[14px] mt-4 text-center">
-        Tap a thumbnail to see it large. Tap "Compare" to see the reference next to it.
+        Tap a thumbnail to see it large.
       </p>
     </section>
   );
